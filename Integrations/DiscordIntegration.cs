@@ -1,62 +1,95 @@
+using Discord.Sdk;
+using NoFowl.Helpers;
+using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 namespace NoFowl.Integrations
 {
-    public class DiscordIntegration : MonoBehaviour
+    public class DiscordIntegration : Singleton<DiscordIntegration>
     {
-        public Discord.Discord discord;
+        [SerializeField]
+        private ulong clientId; // Set this in the Unity Inspector from the dev portal
 
-        private void Start()
+        private Client client;
+
+        private Activity activity;
+        private ActivityTimestamps timestamps;
+
+        void Start()
         {
-            try
-            {
-                discord = new Discord.Discord(855055702888546304, (System.UInt64)Discord.CreateFlags.NoRequireDiscord);
-            }
-            catch (Discord.ResultException e)
-            {
-                Debug.LogWarning("Discord is not open: " + e);
-            }
+            client = new Client();
 
-            if (discord != null)
-            {
-                var activityManager = discord.GetActivityManager();
-                var activity = new Discord.Activity
-                {
-                    State = "Getting Stylish",
-                    Assets = {
-                   LargeImage = "largeicon"
-                }
-                };
+            // Modifying LoggingSeverity will show you more or less logging information
+            client.AddLogCallback(OnLog, LoggingSeverity.Error);
+            client.SetStatusChangedCallback(OnStatusChanged);
+            client.SetApplicationId(clientId);
 
-                activityManager.UpdateActivity(activity, (res) =>
-                {
-                    Debug.Log("Discord result: " + res);
-                });
+            activity = new Activity();
+            timestamps= new ActivityTimestamps();
+            activity.SetStatusDisplayType(StatusDisplayTypes.Name);
+            activity.SetType(ActivityTypes.Playing);
+            activity.SetName("Tactris");
+            SetDetails("In The Menu");
+            UpdatePresence();
+        }
+
+        private void OnDestroy()
+        {
+            client.ClearRichPresence();
+        }
+
+        private void OnLog(string message, LoggingSeverity severity)
+        {
+            Debug.Log($"Log: {severity} - {message}");
+        }
+
+        private void OnStatusChanged(Client.Status status, Client.Error error, int errorCode)
+        {
+            Debug.Log($"Status changed: {status}");
+            if (error != Client.Error.None)
+            {
+                Debug.LogError($"Error: {error}, code: {errorCode}");
             }
         }
 
-        // Update is called once per frame
-        void Update()
+        public void SetDetails(string details)
         {
-            if (discord != null)
-                discord.RunCallbacks();
+            activity.SetDetails(details);
         }
 
-        public void QuitGame()
+        public void SetState(string state)
         {
-            if (discord != null)
+            activity.SetState(state);
+        }
+
+        public void ResetTimestamp()
+        {
+            timestamps.SetStart((ulong)System.DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+            activity.SetTimestamps(timestamps);
+        }
+
+        public void ClearTimestamp()
+        {
+            activity.SetTimestamps(null);
+        }
+
+        public void UpdatePresence()
+        {
+            client.UpdateRichPresence(activity, DiscordPresenceChanged);
+        }
+
+        private void DiscordPresenceChanged(ClientResult result)
+        {
+            if (result.Successful())
             {
-                discord.GetActivityManager().ClearActivity((res) =>
-                {
-                    Debug.Log("Discord close result: " + res);
-                    Application.Quit();
-                });
+                Debug.Log("Rich presence updated!");
             }
             else
             {
-                Application.Quit();
+                Debug.LogError("Failed to update rich presence");
             }
         }
     }
